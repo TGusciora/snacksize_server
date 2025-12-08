@@ -4,7 +4,7 @@ services:
   llm:
     # CHANGE: Build from local Dockerfile instead of pulling image
     # Has to be hardcoded because of the GitHub Actions workflow
-    image: ghcr.io/tgusciora/snacksize-server:latest
+    image: ghcr.io/tgusciora/snacksize_server:latest
     container_name: llama-server
     restart: always
     expose:
