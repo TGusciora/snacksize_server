@@ -1,10 +1,10 @@
-version: "3.5"
-github_repository: tgusciora/snacksize-server
+version: "3.6"
 
 services:
   llm:
     # CHANGE: Build from local Dockerfile instead of pulling image
-    image: ghcr.io/${{ github_repository }}:latest
+    # Has to be hardcoded because of the GitHub Actions workflow
+    image: ghcr.io/tgusciora/snacksize-server:latest
     container_name: llama-server
     restart: always
     expose:
