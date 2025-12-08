@@ -1,12 +1,10 @@
-version: "3.4"
+version: "3.5"
+github_repository: tgusciora/snacksize-server
 
 services:
   llm:
     # CHANGE: Build from local Dockerfile instead of pulling image
-    build:
-      context: .
-      dockerfile: Dockerfile
-      network: host
+    image: ghcr.io/${{ github_repository }}:latest
     container_name: llama-server
     restart: always
     expose:
@@ -15,12 +13,12 @@ services:
       - ./models:/models
     environment:
       - LLAMA_API_KEY=${API_KEY}
-    command: > 
+    command: >
       -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf
       --host 0.0.0.0
       --port 8080
       --api-key ${API_KEY}
-      -c 2048
+      -c 20048
 
   caddy:
     image: caddy:2-alpine
