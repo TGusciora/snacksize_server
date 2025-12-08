@@ -6,6 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # Converts repository name to lowercase automatically
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -19,6 +20,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Log in to the Container registry
         uses: docker/login-action@v2
         with:
@@ -31,8 +35,6 @@ jobs:
         with:
           context: .
           push: true
-          # Note: Ensure IMAGE_NAME is lowercase in your Dockerfile/setup if strictly required, 
-          # but usually github.repository handles it fine for GHCR tags.
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -65,11 +67,10 @@ jobs:
             cd /home/${{ secrets.VPS_USER }}/llm-service
             export API_KEY=${{ secrets.LLM_API_KEY }}
             
-            # Login to GitHub Registry
-            # We use the GitHub Token to pull the image we just built
+            # Login to registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Pull the new image
+            # Pull new image
             docker-compose pull
             
             # Restart
