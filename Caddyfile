@@ -1,0 +1,12 @@
+# 1. IPv6 Address (Secure-ish, Self-Signed)
+# Mikr.us IPv6 address
+https://[2a01:4f9:3a:1029::137] {
+    tls internal
+    reverse_proxy llm:8080
+}
+
+# 2. IPv4 Shared Port (Insecure HTTP)
+# Mikr.us - external IPV4 port
+http://:10137 {
+    reverse_proxy llm:8080
+}

@@ -1,0 +1,115 @@
+---
+- name: LLM Server Setup
+  hosts: webservers
+  become: true
+  vars:
+    deploy_user: deploy
+    app_dir: "/home/{{ deploy_user }}/llm-service"
+    # LiquidAI Model URL
+    model_url: "https://huggingface.co/LiquidAI/LFM2-1.2B-RAG-GGUF/resolve/main/LFM2-1.2B-RAG-Q4_K_M.gguf?download=true"
+
+  tasks:
+    # 0. if system updates are ongoing - wait until they complete
+    - name: Wait for automatic system updates to complete
+      raw: while fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 5; done;
+      changed_when: false   
+    # --- 1. INSTALL PACKAGES ---
+    - name: Install dependencies (Retrying if apt is locked)
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose
+          - python3-docker
+          - caddy
+          - ufw
+          - fail2ban
+          - python3-pip
+          - acl
+        update_cache: true
+        state: present
+      register: apt_action
+      retries: 30
+      delay: 10
+      until: apt_action is success
+
+    # --- 2. USER SETUP ---
+    - name: Create deploy user for CI/CD
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker,sudo
+        shell: /bin/bash
+        append: true
+
+    - name: Add SSH key to deploy user
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        state: present
+        # Looks for the key in your local ~/.ssh/ folder
+        key: "{{ lookup('file', '~/.ssh/llm-server-deploy-key.pub') }}"
+
+    # --- 3. FAIL2BAN CONFIG ---
+    - name: Configure Fail2Ban (Max 5 retries)
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.local
+        content: |
+          [DEFAULT]
+          bantime  = 1h
+          findtime = 10m
+          maxretry = 5
+
+          [sshd]
+          enabled = true
+      notify: Restart Fail2Ban
+
+    # --- 4. IPV6 FIREWALL FIX ---
+    - name: Ensure UFW IPv6 support is enabled
+      ansible.builtin.lineinfile:
+        path: /etc/default/ufw
+        regexp: '^IPV6='
+        line: 'IPV6=yes'
+
+    # --- 5. APP PREP ---
+    - name: Create app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}/models"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: '0755'
+
+    - name: Download LLM Model (Force Curl - Idempotent)
+      ansible.builtin.command:
+        cmd: "curl -L -o {{ app_dir }}/models/LFM2-1.2B-RAG-Q4_K_M.gguf '{{ model_url }}'"
+        creates: "{{ app_dir }}/models/LFM2-1.2B-RAG-Q4_K_M.gguf"
+
+    - name: Ensure correct permissions for model file
+      ansible.builtin.file:
+        path: "{{ app_dir }}/models/LFM2-1.2B-RAG-Q4_K_M.gguf"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: '0644'
+
+    # --- 6. FIREWALL RULES (SAFE MODE) ---
+    - name: Explicitly allow SSH port 10137
+      community.general.ufw:
+        rule: allow
+        port: '10137'
+        proto: tcp
+
+    - name: Configure remaining UFW rules and Enable
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - '80'            # HTTP
+        - '443'           # HTTPS
+        - '20137'         # App Port
+
+  handlers:
+    - name: Restart Fail2Ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted

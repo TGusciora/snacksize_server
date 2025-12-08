@@ -1,0 +1,38 @@
+services:
+  llm:
+    # CHANGE: Build from local Dockerfile instead of pulling image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llama-server
+    restart: always
+    expose:
+      - "8080"
+    volumes:
+      - ./models:/models
+    environment:
+      - LLAMA_API_KEY=${API_KEY}
+    command: > 
+      -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8080
+      --api-key ${API_KEY}
+      -c 2048
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "[::]:80:80"
+      - "[::]:443:443"
+      # - "0.0.0.0:20137:20137" # Uncomment if using Mikr.us NAT
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

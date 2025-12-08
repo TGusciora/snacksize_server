@@ -1,0 +1,34 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # ADD Dockerfile to this list
+          source: "docker-compose.yml,Caddyfile,Dockerfile"
+          target: "/home/${{ secrets.VPS_USER }}/llm-service/"
+
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/${{ secrets.VPS_USER }}/llm-service
+            export API_KEY=${{ secrets.LLM_API_KEY }}
+            # '--build' forces it to re-compile the code
+            docker compose up -d --build --force-recreate
