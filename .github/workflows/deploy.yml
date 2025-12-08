@@ -32,4 +32,4 @@ jobs:
             cd /home/${{ secrets.VPS_USER }}/llm-service
             export API_KEY=${{ secrets.LLM_API_KEY }}
             # '--build' forces it to re-compile the code
-            docker compose up -d --build --force-recreate
+            docker-compose up -d --build --force-recreate
