@@ -76,6 +76,8 @@ jobs:
             
             # Pull new image
             docker-compose pull
+            # Stop and remove old containers
+            docker-compose down || true
             
             # Restart
             docker-compose up -d --force-recreate
