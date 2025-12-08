@@ -1,14 +1,12 @@
 name: Build and Deploy
-github_repository: tgusciora/snacksize-server
 
 on:
   push:
     branches: [ "main" ]
 
 env:
-  # Replace with your GitHub Username (lowercase)
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github_repository }}
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -33,8 +31,9 @@ jobs:
         with:
           context: .
           push: true
+          # Note: Ensure IMAGE_NAME is lowercase in your Dockerfile/setup if strictly required, 
+          # but usually github.repository handles it fine for GHCR tags.
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          # This saves time on future builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -52,7 +51,6 @@ jobs:
           port: ${{ secrets.VPS_PORT }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # We don't need Dockerfile on VPS anymore!
           source: "docker-compose.yml,Caddyfile"
           target: "/home/${{ secrets.VPS_USER }}/llm-service/"
 
@@ -67,11 +65,11 @@ jobs:
             cd /home/${{ secrets.VPS_USER }}/llm-service
             export API_KEY=${{ secrets.LLM_API_KEY }}
             
-            # Login to GitHub Registry on VPS so it can pull the image
-            # We use your PAT/Token passed via env or just public access if repo is public
+            # Login to GitHub Registry
+            # We use the GitHub Token to pull the image we just built
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Pull the new image we just built
+            # Pull the new image
             docker-compose pull
             
             # Restart
