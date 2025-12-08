@@ -1,34 +1,32 @@
-version: "3.6"
+version: "3.7"
 
 services:
   llm:
-    # CHANGE: Build from local Dockerfile instead of pulling image
-    # Has to be hardcoded because of the GitHub Actions workflow
     image: ghcr.io/tgusciora/snacksize_server:latest
     container_name: llama-server
     restart: always
-    expose:
-      - "8080"
+    # 1. Use Host Network
+    network_mode: "host"
     volumes:
       - ./models:/models
     environment:
       - LLAMA_API_KEY=${API_KEY}
     command: >
       -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf
-      --host 0.0.0.0
+      # 2. SECURITY CRITICAL: Only listen on localhost
+      # Since we are on host network, 0.0.0.0 would expose this to the world!
+      --host 127.0.0.1
       --port 8080
       --api-key ${API_KEY}
-      -c 20048
+      -c 2048
 
   caddy:
     image: caddy:2-alpine
     restart: always
-    ports:
-      - "0.0.0.0:80:80"
-      - "0.0.0.0:443:443"
-      - "[::]:80:80"
-      - "[::]:443:443"
-      # - "0.0.0.0:20137:20137" # Uncomment if using Mikr.us NAT
+    # 3. Use Host Network
+    network_mode: "host"
+    # Note: No 'ports' section allowed here. Caddy listens on whatever ports
+    # are defined in the Caddyfile (80, 443, 20137).
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
