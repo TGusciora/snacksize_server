@@ -13,12 +13,10 @@ services:
       - LLAMA_API_KEY=${API_KEY}
     command: >
       -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf
-      # 2. SECURITY CRITICAL: Only listen on localhost
-      # Since we are on host network, 0.0.0.0 would expose this to the world!
       --host 127.0.0.1
       --port 8080
       --api-key ${API_KEY}
-      -c 2048
+      -c 20048
 
   caddy:
     image: caddy:2-alpine
