@@ -15,9 +15,9 @@ jobs:
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # ADD Dockerfile to this list
           source: "docker-compose.yml,Caddyfile,Dockerfile"
           target: "/home/${{ secrets.VPS_USER }}/llm-service/"
 
@@ -25,6 +25,7 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |

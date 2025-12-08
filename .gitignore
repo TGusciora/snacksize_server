@@ -1,2 +1,4 @@
 .env
 .old/*
+ansible/inventory.ini
+.DS_Store
