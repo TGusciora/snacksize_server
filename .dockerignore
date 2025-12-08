@@ -1,0 +1,5 @@
+# .dockerignore
+models/
+.git/
+ansible/
+.github/

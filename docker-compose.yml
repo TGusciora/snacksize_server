@@ -1,9 +1,12 @@
+version: "3.4"
+
 services:
   llm:
     # CHANGE: Build from local Dockerfile instead of pulling image
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
     container_name: llama-server
     restart: always
     expose:
