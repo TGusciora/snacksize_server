@@ -1,56 +1,83 @@
----
+# playbook.yml
 - name: LLM Server Setup
+  # 'hosts' targets the group defined in your inventory file (e.g., hosts.ini)
   hosts: webservers
+  # 'become: true' tells Ansible to use sudo for these tasks (root privileges)
   become: true
+  
+  # VARIABLES: Centralizing data here makes the playbook easier to modify later.
   vars:
     deploy_user: deploy
+    # Using Jinja2 syntax {{ }} to reference the user variable defined above
     app_dir: "/home/{{ deploy_user }}/llm-service"
-    # LiquidAI Model URL
+    # The direct download link for the LiquidAI GGUF model
     model_url: "https://huggingface.co/LiquidAI/LFM2-1.2B-RAG-GGUF/resolve/main/LFM2-1.2B-RAG-Q4_K_M.gguf?download=true"
 
   tasks:
-    # 0. if system updates are ongoing - wait until they complete
+    # --- 0. PRE-FLIGHT CHECKS ---
+    # Cloud servers often run auto-updates on boot which locks the 'apt' database.
+    # If Ansible tries to install packages while apt is locked, it fails.
+    # 'raw' allows us to run a raw shell command without needing Python installed yet.
     - name: Wait for automatic system updates to complete
       raw: while fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 5; done;
+      # 'changed_when: false' keeps the output clean; this is a check, not a system change.
       changed_when: false   
+
     # --- 1. INSTALL PACKAGES ---
     - name: Install dependencies (Retrying if apt is locked)
       ansible.builtin.apt:
         name:
           - docker.io
           - docker-compose
+          # Required for Ansible to control Docker containers later
           - python3-docker
+          # A modern web server/reverse proxy (easier than Nginx)
           - caddy
-          - ufw
-          - fail2ban
+          # Uncomplicated Firewall           
+          - ufw 
+          # Ban IPs that fail SSH login too many times
+          - fail2ban        
           - python3-pip
+          # Access Control Lists (often needed for 'become_user' to work)
           - acl
+        # Equivalent to running 'apt-get update' for updating the package list
         update_cache: true
+        # Ensures packages are installed, but doesn't upgrade if already there  
         state: present
+      # Save the result of this task to a variable called 'apt_action'  
       register: apt_action
+      # RESILIENCE: If the apt lock issue persists, retry this task 30 times with a 10s delay.
       retries: 30
       delay: 10
       until: apt_action is success
 
     # --- 2. USER SETUP ---
+    # We create a specific user for the application. Running apps as root is a security risk.
     - name: Create deploy user for CI/CD
       ansible.builtin.user:
         name: "{{ deploy_user }}"
+        # Add to 'docker' group so they can run containers without sudo
         groups: docker,sudo
         shell: /bin/bash
-        append: true
+        append: true # 'append: true' ensures we add groups without removing existing ones
 
     - name: Add SSH key to deploy user
       ansible.posix.authorized_key:
         user: "{{ deploy_user }}"
         state: present
-        # Looks for the key in your local ~/.ssh/ folder
+        # KEY CONCEPT: 'lookup' runs on your LOCAL machine (Control Node).
+        # It reads your public key and copies it to the remote server's authorized_keys file.
         key: "{{ lookup('file', '~/.ssh/llm-server-deploy-key.pub') }}"
 
     # --- 3. FAIL2BAN CONFIG ---
+    # Security hardening: Prevent brute-force SSH attacks.
     - name: Configure Fail2Ban (Max 5 retries)
       ansible.builtin.copy:
         dest: /etc/fail2ban/jail.local
+        # The content block defines the file text directly inside the playbook.
+        # Ban attacker for 1 hour
+        # Look at failures within a 10-minute window
+        # Ban after 5 failed attempts
         content: |
           [DEFAULT]
           bantime  = 1h
@@ -59,13 +86,19 @@
 
           [sshd]
           enabled = true
+      # HANDLER TRIGGER: If this file changes, notify the handler to restart the service.
+      # If the file hasn't changed, the service won't restart (saving time).
       notify: Restart Fail2Ban
 
     # --- 4. IPV6 FIREWALL FIX ---
+    # UFW sometimes fails to start if the config creates IPv6 rules but IPv6 is disabled on the OS.
+    # This ensures consistency.
     - name: Ensure UFW IPv6 support is enabled
       ansible.builtin.lineinfile:
         path: /etc/default/ufw
+        # Look for a line starting with IPV6=
         regexp: '^IPV6='
+        # Replace it with IPV6=yes
         line: 'IPV6=yes'
 
     # --- 5. APP PREP ---
@@ -75,11 +108,17 @@
         state: directory
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
+        # rwx for owner, rx for group/others
         mode: '0755'
 
+    # We use 'command' with curl instead of 'get_url' module sometimes for very large files,
+    # as Ansible's Python overhead can be slow on large binaries.
     - name: Download LLM Model (Force Curl - Idempotent)
       ansible.builtin.command:
         cmd: "curl -L -o {{ app_dir }}/models/LFM2-1.2B-RAG-Q4_K_M.gguf '{{ model_url }}'"
+        # IMPORTANT: 'creates' makes this idempotent.
+        # Ansible checks if this file exists first. If it does, it SKIPS this task.
+        # Without this, you would re-download 700MB+ every time you run the playbook.
         creates: "{{ app_dir }}/models/LFM2-1.2B-RAG-Q4_K_M.gguf"
 
     - name: Ensure correct permissions for model file
@@ -87,9 +126,12 @@
         path: "{{ app_dir }}/models/LFM2-1.2B-RAG-Q4_K_M.gguf"
         owner: "{{ deploy_user }}"
         group: "{{ deploy_user }}"
+        # Read/Write for owner, Read-only for everyone else
         mode: '0644'
 
     # --- 6. FIREWALL RULES (SAFE MODE) ---
+    # CRITICAL: Always allow your SSH port explicitly BEFORE enabling the firewall.
+    # If you skip this, you will lock yourself out of the server immediately.
     - name: Explicitly allow SSH port 10137
       community.general.ufw:
         rule: allow
@@ -99,15 +141,24 @@
     - name: Configure remaining UFW rules and Enable
       community.general.ufw:
         state: enabled
+        # Default to blocking everything
         policy: deny
-        rule: allow
+        # Then whitelist specific ports  
+        rule: allow   
         port: "{{ item }}"
         proto: tcp
+      # 'loop' allows us to run this task 3 times with different variables
       loop:
-        - '80'            # HTTP
-        - '443'           # HTTPS
-        - '20137'         # App Port
+        # HTTP
+        - '80'            
+        # HTTPS
+        - '443'           
+        # The port your specific Python/Node app runs on
+        - '20137'
 
+  # --- HANDLERS ---
+  # Handlers are special tasks that only run when 'notify' is triggered.
+  # They run at the very end of the playbook run.
   handlers:
     - name: Restart Fail2Ban
       ansible.builtin.service:
