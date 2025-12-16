@@ -1,5 +1,14 @@
 # .dockerignore
+# CRITICAL: We ignore the 'models' directory. 
+# Model files are huge. If you don't ignore this, Docker tries to "upload" 
+# the model to the build context, which takes forever and wastes space.
 models/
+
+# Ignore the git history. We only need the current files, not the 
+# entire history of changes.
 .git/
+
+# Ignore automation scripts and GitHub workflows. 
+# The container doesn't need to know about your CI/CD pipelines.
 ansible/
 .github/

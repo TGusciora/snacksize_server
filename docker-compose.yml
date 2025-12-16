@@ -3,34 +3,61 @@ version: "3.7"
 
 services:
   llm:
+    # This pulls the image. If you built it locally, you might change this tag,
+    # but currently, it points to a pre-built image on GitHub Container Registry.
+    # Note: change "tgusciora" to your own repository if you want to use your own image.
     image: ghcr.io/tgusciora/snacksize_server:latest
     container_name: llama-server
     restart: always
+    
     # 1. Use Host Network
+    # This is the "easy mode" for networking. Instead of isolating the container,
+    # it shares the host's IP address directly. 
+    # Great for performance and simplicity, slightly less secure than bridge mode.
     network_mode: "host"
+    
     volumes:
+      # This is critical. We map the './models' folder on your physical computer
+      # to '/models' inside the container. 
+      # This allows the container to read your massive model files without copying them inside.
       - ./models:/models
+      
     environment:
+      # We pass the API key from your .env file into the container securely.
       - LLAMA_API_KEY=${API_KEY}
+      
     command: >
+      # This is the actual command the server runs on startup.
+      # -m: Path to the model file (inside the container).
       -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf
+      # --host: We bind to localhost since we are using host networking.
       --host 127.0.0.1
+      # --port: The port the server listens on.
       --port 8080
+      # --api-key: Enforces authentication.
       --api-key ${API_KEY}
+      # -c: Context size (how much text the AI can remember at once). 20k is quite generous.
       -c 20048
 
   caddy:
+    # Caddy is a web server acting as a "Reverse Proxy".
+    # It sits in front of the LLM server, handles security, SSL, or traffic routing.
     image: caddy:2-alpine
     restart: always
+    
     # 3. Use Host Network
+    # Again, sharing the host network stack for easier communication with the LLM service.
     network_mode: "host"
-    # Note: No 'ports' section allowed here. Caddy listens on whatever ports
-    # are defined in the Caddyfile (80, 443, 20137).
+    
+    # Note: No 'ports' section allowed here because network_mode is "host".
+    # Caddy automatically grabs the ports defined in its config file (Caddyfile).
     volumes:
+      # Mapping the configuration file and data persistence folders.
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
 
 volumes:
+  # Persistent storage for Caddy so it remembers SSL certs and configurations across restarts.
   caddy_data:
   caddy_config:
