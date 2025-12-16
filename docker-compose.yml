@@ -25,18 +25,18 @@ services:
     environment:
       # We pass the API key from your .env file into the container securely.
       - LLAMA_API_KEY=${API_KEY}
-      
-    command: >
+
       # This is the actual command the server runs on startup.
       # -m: Path to the model file (inside the container).
-      -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf
       # --host: We bind to localhost since we are using host networking.
-      --host 127.0.0.1
       # --port: The port the server listens on.
-      --port 8080
       # --api-key: Enforces authentication.
-      --api-key ${API_KEY}
       # -c: Context size (how much text the AI can remember at once). 20k is quite generous.
+    command: >
+      -m /models/LFM2-1.2B-RAG-Q4_K_M.gguf     
+      --host 127.0.0.1
+      --port 8080
+      --api-key ${API_KEY}
       -c 20048
 
   caddy:
